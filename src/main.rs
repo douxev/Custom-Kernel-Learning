@@ -2,6 +2,7 @@
 #![no_main]
 #![feature(abi_x86_interrupt)]
 
+mod gdt;
 mod interrupts;
 mod serial;
 mod vga;
@@ -36,6 +37,7 @@ lazy_static! {
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
+    gdt::init();
     interrupts::init();
     writeln!(SERIAL.lock(), "Hello, serial port!").unwrap();
 
@@ -45,6 +47,15 @@ pub extern "C" fn _start() -> ! {
     x86_64::instructions::interrupts::int3();
 
     writeln!(SERIAL.lock(), "Logs sent!").unwrap();
+
+    // Test du double fault par stack overflow
+    #[allow(unconditional_recursion)]
+    fn stack_overflow() {
+        stack_overflow();
+        // empêche le tail-call optimization de transformer ça en simple jump
+        core::hint::black_box(());
+    }
+    stack_overflow();
 
     loop {}
 }

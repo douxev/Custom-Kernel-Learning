@@ -1,3 +1,4 @@
+use crate::gdt;
 use crate::VGA_IRQ;
 use core::fmt::Write;
 use lazy_static::lazy_static;
@@ -6,10 +7,14 @@ use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, Pag
 lazy_static! {
   static ref IDT: InterruptDescriptorTable = {
     let mut idt = InterruptDescriptorTable::new();
+    idt.general_protection_fault.set_handler_fn(general_protection_fault_handler);
     idt.breakpoint.set_handler_fn(breakpoint_handler);
     idt.page_fault.set_handler_fn(page_fault_handler);
-    idt.double_fault.set_handler_fn(double_fault_handler); // new
-
+    unsafe {
+      idt.double_fault
+        .set_handler_fn(double_fault_handler)
+        .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
+    }
     idt
   };
 
@@ -25,7 +30,10 @@ fn init_idt() {
 }
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
-    writeln!(VGA_IRQ.lock(), "EXCEPTION: BREAKPOINT {:#?}", stack_frame).unwrap();
+    let mut w = VGA_IRQ.lock();
+    writeln!(w, "EXCEPTION: BREAKPOINT").unwrap();
+    writeln!(w, "  rip:      {:?}", stack_frame.instruction_pointer).unwrap();
+    writeln!(w, "{:#?}", stack_frame).unwrap();
 }
 
 extern "x86-interrupt" fn page_fault_handler(
@@ -69,9 +77,51 @@ extern "x86-interrupt" fn page_fault_handler(
     }
 }
 
+extern "x86-interrupt" fn general_protection_fault_handler(
+    stack_frame: InterruptStackFrame,
+    error_code: u64,
+) {
+    let mut w = VGA_IRQ.lock();
+    writeln!(w, "EXCEPTION: GENERAL PROTECTION FAULT").unwrap();
+    if error_code == 0 {
+        writeln!(w, "  selector: <none>").unwrap();
+    } else {
+        let external = error_code & 0b1 != 0;
+        let table = match (error_code >> 1) & 0b11 {
+            0b00 => "GDT",
+            0b01 | 0b11 => "IDT",
+            0b10 => "LDT",
+            _ => unreachable!(),
+        };
+        let index = (error_code >> 3) & 0x1FFF;
+        writeln!(
+            w,
+            "  selector: index={} table={} external={}",
+            index, table, external
+        )
+        .unwrap();
+    }
+    writeln!(w, "  raw:      {:#x}", error_code).unwrap();
+    writeln!(w, "{:#?}", stack_frame).unwrap();
+    drop(w);
+
+    loop {
+        x86_64::instructions::hlt();
+    }
+}
+
 extern "x86-interrupt" fn double_fault_handler(
     stack_frame: InterruptStackFrame,
-    _error_code: u64,
+    error_code: u64,
 ) -> ! {
-    panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
+    let mut w = VGA_IRQ.lock();
+    writeln!(w, "EXCEPTION: DOUBLE FAULT").unwrap();
+    writeln!(w, "  raw:      {:#x}", error_code).unwrap();
+    writeln!(w, "{:#?}", stack_frame).unwrap();
+    drop(w);
+
+    x86_64::instructions::interrupts::disable();
+    loop {
+        x86_64::instructions::hlt();
+    }
 }

@@ -22,22 +22,6 @@ pub enum Color {
     White = 15,
 }
 
-// VGA attribute byte: 4 bits background (high) + 4 bits foreground (low).
-//
-// Avant : `pub enum ColorCode` (16 variants 0..=15) servait *aussi* à stocker
-// l'octet combiné. `new()` faisait :
-//
-//     unsafe { transmute((bg as u8) << 4 | (fg as u8)) }
-//
-// Problème : `(bg << 4) | fg` produit une valeur 0..=255, mais `ColorCode`
-// n'autorise que 0..=15 comme discriminants valides. Transmuter 0xEC vers
-// cet enum = Undefined Behavior (les bits hauts du background étaient perdus
-// ou le compilateur faisait n'importe quoi).
-//
-// Fix : un newtype `ColorCode(u8)` peut contenir n'importe quel u8 — pas de
-// contrainte de discriminant, donc plus besoin de `unsafe` ni de transmute.
-// La règle : si tu te retrouves à `transmute` un entier vers un enum, c'est
-// souvent qu'il faut un newtype à la place.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct ColorCode(u8);

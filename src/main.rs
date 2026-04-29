@@ -2,10 +2,12 @@
 #![no_main]
 #![feature(abi_x86_interrupt)]
 
+#[macro_use]
+mod vga;
+#[macro_use]
+mod serial;
 mod gdt;
 mod interrupts;
-mod serial;
-mod vga;
 
 use crate::serial::SerialPort;
 use crate::vga::{Color, ColorCode};
@@ -37,25 +39,16 @@ lazy_static! {
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    gdt::init();
     interrupts::init();
     writeln!(SERIAL.lock(), "Hello, serial port!").unwrap();
 
     writeln!(VGA.lock(), "Hello, world!").unwrap();
     writeln!(VGA.lock(), "This is a VGA text mode example.").unwrap();
 
-    x86_64::instructions::interrupts::int3();
+    // x86_64::instructions::interrupts::int3();
 
     writeln!(SERIAL.lock(), "Logs sent!").unwrap();
 
-    // Test du double fault par stack overflow
-    #[allow(unconditional_recursion)]
-    fn stack_overflow() {
-        stack_overflow();
-        // empêche le tail-call optimization de transformer ça en simple jump
-        core::hint::black_box(());
-    }
-    stack_overflow();
 
     loop {}
 }
@@ -66,6 +59,13 @@ pub extern "C" fn _start() -> ! {
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
+    x86_64::instructions::interrupts::disable();
+    loop {
+        x86_64::instructions::hlt();
+    }
+}
+
+pub fn halt_loop() -> ! {
     x86_64::instructions::interrupts::disable();
     loop {
         x86_64::instructions::hlt();

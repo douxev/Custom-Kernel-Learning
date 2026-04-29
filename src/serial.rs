@@ -46,3 +46,20 @@ impl core::fmt::Write for SerialPort {
         Ok(())
     }
 }
+
+#[doc(hidden)]
+pub fn _sprint(args: core::fmt::Arguments) {
+    use core::fmt::Write;
+    crate::SERIAL.lock().write_fmt(args).unwrap();
+}
+
+#[macro_export]
+macro_rules! serial_print {
+    ($($arg:tt)*) => ($crate::serial::_sprint(format_args!($($arg)*)));
+}
+
+#[macro_export]
+macro_rules! serial_println {
+    () => ($crate::serial_print!("\n"));
+    ($($arg:tt)*) => ($crate::serial_print!("{}\n", format_args!($($arg)*)));
+}
